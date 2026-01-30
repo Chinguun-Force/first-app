@@ -7,6 +7,9 @@ import '../../auth/domain/app_user.dart';
 class AdminDashboard extends ConsumerStatefulWidget {
   const AdminDashboard({super.key});
 
+  // Энэ дэлгэцийн стандарт createState.
+  // Хайлт болон dialog-ийн төлөвийг хадгалахын тулд энэ хэрэгтэй.
+  // Анхаарах зүйл: widget-ийн амьдралын мөчлөг.
   @override
   ConsumerState<AdminDashboard> createState() => _AdminDashboardState();
 }
@@ -14,6 +17,9 @@ class AdminDashboard extends ConsumerStatefulWidget {
 class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   String _searchQuery = '';
 
+  // Хайлт болон жагсаалт бүхий админ UI-г угсрах.
+  // Админ хэсгийг энгийн, ойлгомжтой "нэг дэлгэц" загвараар хийв.
+  // Анхаарах зүйл: хоосон жагсаалт байвал эелдэг мэдэгдэл харуулна.
   @override
   Widget build(BuildContext context) {
     final usersAsync = ref.watch(usersListProvider);
@@ -89,6 +95,9 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     );
   }
 
+  // Зөөлөн устгалт хийхийн өмнө баталгаажуулах.
+  // Админ санамсаргүйгээр хэрэглэгч идэвхгүй болгохоос сэргийлнэ.
+  // Анхаарах зүйл: устгалт амжилтгүй болсон ч dialog хаагдана (энгийн UX).
   void _confirmDelete(BuildContext context, AppUser user) {
     showDialog(
       context: context,
@@ -101,9 +110,10 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              ref.read(userRepositoryProvider).softDeleteUser(user.uid);
-              Navigator.pop(context);
+            onPressed: () async {
+              await ref.read(userRepositoryProvider).softDeleteUser(user.uid);
+              ref.invalidate(usersListProvider);
+              if (context.mounted) Navigator.pop(context);
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
@@ -112,6 +122,9 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     );
   }
 
+  // Хэрэглэгч нэмэх/засах dialog-ийг нээх.
+  // Шинээр үүсгэх болон засах үйлдлийг нэг dialog-оор шийдсэн.
+  // Анхаарах зүйл: dialog зүгээр л нээгдэнэ.
   void _showUserDialog(BuildContext context, {AppUser? user}) {
     showDialog(
       context: context,
@@ -124,6 +137,9 @@ class UserDialog extends ConsumerStatefulWidget {
   final AppUser? user;
   const UserDialog({super.key, this.user});
 
+  // Dialog-ийн стандарт createState.
+  // Form-ийн төлөвийг dialog дотроо хадгалахын тулд хэрэгтэй.
+  // Анхаарах зүйл: энгийн амьдралын мөчлөг.
   @override
   ConsumerState<UserDialog> createState() => _UserDialogState();
 }
@@ -135,6 +151,9 @@ class _UserDialogState extends ConsumerState<UserDialog> {
   String _role = 'user';
   bool _isActive = true;
 
+  // Засах vs Үүсгэх үеийн утгуудыг тохируулах.
+  // Хэрэглэгчийг засах үед формыг хуучин мэдээллээр дүүргэнэ.
+  // Анхаарах зүйл: хэрэглэгч null байвал хоосон утга авна.
   @override
   void initState() {
     super.initState();
@@ -144,6 +163,9 @@ class _UserDialogState extends ConsumerState<UserDialog> {
     _isActive = widget.user?.isActive ?? true;
   }
 
+  // Профайл үүсгэх/засах dialog UI-г угсрах.
+  // Админ хэрэглэгчийн профайлыг хурдан удирдах боломжтой байна.
+  // Анхаарах зүйл: засах үед мэйл өөрчлөгдөхгүй (auth record-той зөрөхөөс сэргийлж).
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.user != null;
@@ -174,7 +196,7 @@ class _UserDialogState extends ConsumerState<UserDialog> {
                 validator: (v) => v!.isEmpty ? 'Required' : null,
               ),
               DropdownButtonFormField<String>(
-                value: _role,
+                initialValue: _role,
                 items: const [
                   DropdownMenuItem(value: 'user', child: Text('User')),
                   DropdownMenuItem(value: 'admin', child: Text('Admin')),
@@ -207,6 +229,7 @@ class _UserDialogState extends ConsumerState<UserDialog> {
               final newUser = AppUser(
                 uid: uid,
                 email: _emailCtrl.text.trim(),
+                password: 'password123', // Админ үүсгэх үед default нууц үг
                 displayName: _nameCtrl.text.trim(),
                 role: _role,
                 isActive: _isActive,
@@ -218,6 +241,7 @@ class _UserDialogState extends ConsumerState<UserDialog> {
               } else {
                 await repo.createUserProfile(newUser);
               }
+              ref.invalidate(usersListProvider);
               if (context.mounted) Navigator.pop(context);
             }
           },

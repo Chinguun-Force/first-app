@@ -1,69 +1,82 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../domain/app_user.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return AuthRepository(FirebaseAuth.instance, FirebaseFirestore.instance);
+  // SharedPreferences-д суурилсан Auth Repository
+  throw UnimplementedError(
+    'SharedPreferences instance must be provided via override',
+  );
 });
 
-final authStateProvider = StreamProvider<User?>((ref) {
-  return ref.watch(authRepositoryProvider).authStateChanges;
-});
+final authStateProvider = StateProvider<String?>((ref) => null);
 
-// Stream of custom user data from Firestore
-final currentUserProfileProvider = StreamProvider<AppUser?>((ref) {
-  final authUser = ref.watch(authStateProvider).value;
-  if (authUser == null) return Stream.value(null);
-  return ref.watch(authRepositoryProvider).getUserStream(authUser.uid);
+final currentUserProfileProvider = FutureProvider<AppUser?>((ref) async {
+  final uid = ref.watch(authStateProvider);
+  if (uid == null) return null;
+  final repo = ref.watch(authRepositoryProvider);
+  return repo.getUser(uid);
 });
 
 class AuthRepository {
-  final FirebaseAuth _auth;
-  final FirebaseFirestore _firestore;
+  final SharedPreferences _prefs;
+  static const String _userKeyPrefix = 'user_';
 
-  AuthRepository(this._auth, this._firestore);
+  AuthRepository(this._prefs);
 
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
-
-  Stream<AppUser?> getUserStream(String uid) {
-    return _firestore.collection('users').doc(uid).snapshots().map((snapshot) {
-      if (!snapshot.exists) return null;
-      return AppUser.fromMap(snapshot.data()!, snapshot.id);
-    });
+  Future<AppUser?> getUser(String uid) async {
+    final data = _prefs.getString('$_userKeyPrefix$uid');
+    if (data == null) return null;
+    return AppUser.fromJson(data);
   }
 
-  Future<void> signIn(String email, String password) async {
-    await _auth.signInWithEmailAndPassword(email: email, password: password);
-    // After sign-in, the authStateChanges stream will emit, triggering updates
+  Future<AppUser?> signIn(String email, String password) async {
+    // Бүх хэрэглэгчдийг шалгах (энгийн байдлаар)
+    final keys = _prefs.getKeys();
+    for (final key in keys) {
+      if (key.startsWith(_userKeyPrefix)) {
+        final user = AppUser.fromJson(_prefs.getString(key)!);
+        if (user.email == email && user.password == password) {
+          if (!user.isActive) throw Exception('Бүртгэл идэвхгүй байна');
+          return user;
+        }
+      }
+    }
+    throw Exception('Имэйл эсвэл нууц үг буруу байна');
   }
 
-  Future<void> signOut() async {
-    await _auth.signOut();
+  void signOut(Ref ref) {
+    ref.read(authStateProvider.notifier).state = null;
   }
 
-  Future<void> register(
-    String email,
-    String password,
-    String displayName,
-  ) async {
-    final cred = await _auth.createUserWithEmailAndPassword(
+  Future<void> register({
+    required String uid,
+    required String email,
+    required String password,
+    required String displayName,
+    bool isAdmin = false,
+    bool isActive = true,
+    DateTime? createdAt,
+  }) async {
+    // Имэйл шалгах
+    final keys = _prefs.getKeys();
+    for (final key in keys) {
+      if (key.startsWith(_userKeyPrefix)) {
+        final user = AppUser.fromJson(_prefs.getString(key)!);
+        if (user.email == email) throw Exception('Имэйл бүртгэгдсэн байна');
+      }
+    }
+
+    final user = AppUser(
+      uid: uid,
       email: email,
       password: password,
+      displayName: displayName,
+      role: isAdmin ? 'admin' : 'user',
+      isActive: isActive,
+      createdAt: createdAt ?? DateTime.now(),
     );
 
-    // Create initial user doc
-    if (cred.user != null) {
-      final user = AppUser(
-        uid: cred.user!.uid,
-        email: email,
-        displayName: displayName,
-        createdAt: DateTime.now(),
-      );
-      await _firestore
-          .collection('users')
-          .doc(cred.user!.uid)
-          .set(user.toMap());
-    }
+    await _prefs.setString('$_userKeyPrefix$uid', user.toJson());
   }
 }

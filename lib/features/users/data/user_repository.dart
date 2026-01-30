@@ -1,40 +1,50 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../auth/domain/app_user.dart';
 
-final userRepositoryProvider = Provider(
-  (ref) => UserRepository(FirebaseFirestore.instance),
-);
+final userRepositoryProvider = Provider<UserRepository>((ref) {
+  // SharedPreferences-д суурилсан User Repository
+  throw UnimplementedError(
+    'SharedPreferences instance must be provided via override',
+  );
+});
 
-final usersListProvider = StreamProvider<List<AppUser>>((ref) {
-  return ref.watch(userRepositoryProvider).getUsersStream();
+final usersListProvider = FutureProvider<List<AppUser>>((ref) async {
+  final repo = ref.watch(userRepositoryProvider);
+  return repo.getUsers();
 });
 
 class UserRepository {
-  final FirebaseFirestore _firestore;
+  final SharedPreferences _prefs;
+  static const String _userKeyPrefix = 'user_';
 
-  UserRepository(this._firestore);
+  UserRepository(this._prefs);
 
-  Stream<List<AppUser>> getUsersStream() {
-    return _firestore.collection('users').snapshots().map((snapshot) {
-      return snapshot.docs
-          .map((doc) => AppUser.fromMap(doc.data(), doc.id))
-          .toList();
-    });
+  Future<List<AppUser>> getUsers() async {
+    final keys = _prefs.getKeys();
+    final users = <AppUser>[];
+    for (final key in keys) {
+      if (key.startsWith(_userKeyPrefix)) {
+        users.add(AppUser.fromJson(_prefs.getString(key)!));
+      }
+    }
+    return users;
   }
 
   Future<void> createUserProfile(AppUser user) async {
-    // Note: This does NOT create the Auth user.
-    // Ideally this is called by a Cloud Function or after the user registers.
-    // For Admin "Add User", we create the doc acts as a placeholder or pre-approved profile.
-    await _firestore.collection('users').doc(user.uid).set(user.toMap());
+    await _prefs.setString('$_userKeyPrefix${user.uid}', user.toJson());
   }
 
   Future<void> updateUser(AppUser user) async {
-    await _firestore.collection('users').doc(user.uid).update(user.toMap());
+    await _prefs.setString('$_userKeyPrefix${user.uid}', user.toJson());
   }
 
   Future<void> softDeleteUser(String uid) async {
-    await _firestore.collection('users').doc(uid).update({'isActive': false});
+    final data = _prefs.getString('$_userKeyPrefix$uid');
+    if (data != null) {
+      final user = AppUser.fromJson(data);
+      final updated = user.copyWith(isActive: false);
+      await _prefs.setString('$_userKeyPrefix$uid', updated.toJson());
+    }
   }
 }
