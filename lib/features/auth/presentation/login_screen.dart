@@ -5,6 +5,9 @@ import '../data/auth_repository.dart';
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
+  // Энэ бол Flutter-ийн стандарт widget factory юм.
+  // Input болон алдааг зохицуулахын тулд stateful байх шаардлагатай.
+  // Анхаарах зүйл: энгийн widget үүсгэлт.
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
@@ -15,6 +18,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
+  // Email/password ашиглан нэвтрэх функц.
+  // Auth логбийг дэлгэцэнд ойр байлгах үүднээс энд бичсэн.
+  // Анхаарах зүйл: буруу мэдээлэл хийвэл UI дээр алдааг харуулна.
   Future<void> _login() async {
     setState(() {
       _isLoading = true;
@@ -22,12 +28,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
 
     try {
-      await ref
+      final user = await ref
           .read(authRepositoryProvider)
           .signIn(
             _emailController.text.trim(),
             _passwordController.text.trim(),
           );
+      if (user != null) {
+        ref.read(authStateProvider.notifier).state = user.uid;
+      }
       // Navigation handled by Router Guard
     } catch (e) {
       setState(() => _errorMessage = e.toString());
@@ -36,6 +45,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  // Хурдан тест хийхэд зориулсан бүртгүүлэх функц.
+  // Админ хэсэгт дата харагдуулахын тулд энд үлдээв.
+  // Анхаарах зүйл: сул нууц үг эсвэл давхардсан мэйл байвал Firebase алдаа өгнө.
   Future<void> _register() async {
     setState(() {
       _isLoading = true;
@@ -46,10 +58,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref
           .read(authRepositoryProvider)
           .register(
-            _emailController.text.trim(),
-            _passwordController.text.trim(),
-            "New User", // Default display name for quick test
+            uid: DateTime.now().millisecondsSinceEpoch.toString(),
+            email: _emailController.text.trim(),
+            isAdmin:
+                true, // Тест хийхэд хялбар байлгах үүднээс админ эрхтэй үүсгэж байна
+            displayName: "Test Admin",
+            password: _passwordController.text.trim(),
           );
+      // Бүртгүүлсний дараа шууг нэвтрүүлж болно
+      await _login();
     } catch (e) {
       setState(() => _errorMessage = e.toString());
     } finally {
@@ -57,6 +74,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  // Нэвтрэх болон бүртгүүлэх UI-г угсрах.
+  // Админ апп учраас загварыг энгийн бөгөөд ойлгомжтой байлгав.
+  // Анхаарах зүйл: зөвхөн алдаа гарсан үед л анхааруулга харуулна.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
